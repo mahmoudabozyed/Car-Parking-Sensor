@@ -1,0 +1,91 @@
+/******************************************************************************
+ *
+ * Module: Main Application
+ *
+ * File Name: Car_Parking_Sensor.c
+ *
+ * Description: Main application for Car Parking Sensor System
+ *
+ * Author: Mahmoud Abouzeid
+ *
+ *******************************************************************************/
+
+#include "MCAL/GPIO/GPIO.h"
+#include "HAL/LCD/LCD.h"
+#include "HAL/BUZZER/BUZZER.h"
+#include "HAL/LED/LED.h"
+#include "HAL/Ultrasonic/Ultrasonic.h"
+#include <util/delay.h>
+#include <avr/io.h>
+
+int main(void) {
+
+	uint16 Distance; // Variable to store the distance measured by the ultrasonic sensor
+
+	LCD_init();                 // Initialize the LCD display
+	LEDS_init();                // Initialize the LED system
+	Buzzer_init();              // Initialize the buzzer
+	Ultrasonic_init();          // Initialize the ultrasonic sensor
+
+	SREG |= (1 << 7); // Enable global interrupts by setting the I-bit in the status register
+
+	LCD_displayStringRowColumn(0, 1, "Distance=   CM"); // Display the initial message on the LCD
+
+	while (1) {
+		// Read the distance from the ultrasonic sensor
+		Distance = Ultrasonic_readDistance() + 1; // Read and adjust the distance value (+1 for rounding)
+
+		// Update the distance on the LCD at row 0, column 10
+		LCD_moveCursur(0, 10);
+		LCD_itos(Distance); // Convert integer to string and display it on the LCD
+
+		// Clean up the display if the distance is less than 10 cm to avoid leftover characters
+		if (Distance < 10) {
+			LCD_displayStringRowColumn(0, 11, " "); // Clear any extra digits on the LCD
+		}
+
+		// Conditional actions based on distance
+		if (Distance > 20) {
+			// If the distance is greater than 20 cm, turn off all LEDs and the buzzer
+			LED_off(RED_LED);
+			LED_off(GREEN_LED);
+			LED_off(BLUE_LED);
+			Buzzer_off();
+			LCD_displayStringRowColumn(1, 7, "    "); // Clear any previous messages on the LCD
+		} else if (Distance >= 16 && Distance <= 20) {
+			// If the distance is between 16 and 20 cm, turn on the red LED only
+			LED_on(RED_LED);
+			LED_off(GREEN_LED);
+			LED_off(BLUE_LED);
+			Buzzer_off();
+			LCD_displayStringRowColumn(1, 7, "    "); // Clear any previous messages on the LCD
+		} else if (Distance >= 11 && Distance <= 15) {
+			// If the distance is between 11 and 15 cm, turn on the red and green LEDs
+			LED_on(RED_LED);
+			LED_on(GREEN_LED);
+			LED_off(BLUE_LED);
+			Buzzer_off();
+			LCD_displayStringRowColumn(1, 7, "    "); // Clear any previous messages on the LCD
+		} else if (Distance >= 6 && Distance <= 10) {
+			// If the distance is between 6 and 10 cm, turn on red, green, and blue LEDs
+			LED_on(RED_LED);
+			LED_on(GREEN_LED);
+			LED_on(BLUE_LED);
+			Buzzer_off();
+			LCD_displayStringRowColumn(1, 7, "    "); // Clear any previous messages on the LCD
+		} else {
+			// If the distance is less than or equal to 5 cm, display "STOP" and turn on the buzzer with blinking LEDs
+			LCD_displayStringRowColumn(1, 7, "STOP"); // Display "STOP" on the LCD
+			LED_on(RED_LED);
+			LED_on(GREEN_LED);
+			LED_on(BLUE_LED);
+			Buzzer_on();             // Turn on the buzzer
+			_delay_ms(100);          // Wait for 100 ms
+			LED_off(RED_LED);
+			LED_off(GREEN_LED);
+			LED_off(BLUE_LED);
+			Buzzer_off();            // Turn off the buzzer
+			_delay_ms(100); // Wait for another 100 ms to create a blinking effect
+		}
+	}
+}

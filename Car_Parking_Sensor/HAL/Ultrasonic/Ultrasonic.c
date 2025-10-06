@@ -1,0 +1,66 @@
+/******************************************************************************
+ *
+ * Module: Ultrasonic Sensor
+ *
+ * File Name: Ultrasonic.c
+ *
+ * Description: Source file for the HC-SR04 Ultrasonic Sensor driver
+ *
+ * Author: Mahmoud Abouzeid
+ *
+ *******************************************************************************/
+
+#include "Ultrasonic.h"
+#include "../../MCAL/ICU/ICU.h"
+#include "../../MCAL/GPIO/GPIO.h"
+#include <util/delay.h>
+/*******************************************************************************
+ *                           Global Variables                                  *
+ *******************************************************************************/
+
+ICU_ConfigType configurations = {F_CPU_8, RAISING};
+
+uint8 Counter = 0;
+uint16 T1 = 0;
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+void Ultrasonic_edgeProcessing(void) {
+	Counter++;
+	if (Counter == 1) {
+		/*
+		 * Clear the timer counter register to start measurements from the
+		 * first detected rising edge
+		 */
+		ICU_clearTimerValue();
+		/* Detect falling edge */
+		ICU_setEdgeDetectionType(FALLING);
+	} else if (Counter == 2) {
+		/* Store the High time value */
+		T1 = ICU_getInputCaptureValue();
+		/* Detect rising edge */
+		ICU_setEdgeDetectionType(RAISING);
+		Counter = 0;
+	}
+}
+
+void Ultrasonic_Trigger(void) {
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, HIGH);
+	_delay_us(TRIGGER_DELAY);
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, LOW);
+}
+
+uint16 Ultrasonic_readDistance(void) {
+	uint16 distance;
+	Ultrasonic_Trigger();
+	distance = (uint16)(T1 / 117.6);
+	return distance;
+}
+
+void Ultrasonic_init(void) {
+	ICU_init(&configurations);
+	ICU_setCallBack(Ultrasonic_edgeProcessing);
+	GPIO_setupPinDirection(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, pin_output);
+}

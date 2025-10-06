@@ -1,0 +1,139 @@
+/******************************************************************************
+ *
+ * Module: Ultrasonic Sensor
+ *
+ * File Name: Ultrasonic.c
+ *
+ * Description: Source file for the HC-SR04 Ultrasonic Sensor driver
+ *
+ * Author: Your Name
+ *
+ *******************************************************************************/
+
+#include "Ultrasonic.h"
+#include "ICU.h"
+#include "GPIO.h"
+#include <util/delay.h>
+
+/*******************************************************************************
+ *                           Global Variables                                  *
+ *******************************************************************************/
+
+/* ICU configuration for ultrasonic sensor */
+ICU_ConfigType ICU_Config = {F_CPU_8, RAISING};
+
+/* Global variables for distance calculation */
+static volatile uint8 g_edgeCount = 0;
+static volatile uint16 g_highTime = 0;
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+/*
+ * Description: Callback function called by ICU when edge is detected
+ *              Calculates the high time of the echo pulse
+ */
+void Ultrasonic_edgeProcessing(void)
+{
+	g_edgeCount++;
+
+	if (g_edgeCount == 1)
+	{
+		/*
+		 * Clear the timer counter register to start measurements from the
+		 * first detected rising edge
+		 */
+		ICU_clearTimerValue();
+		/* Detect falling edge */
+		ICU_setEdgeDetectionType(FALLING);
+	}
+	else if (g_edgeCount == 2)
+	{
+		/* Store the High time value */
+		g_highTime = ICU_getInputCaptureValue();
+		/* Detect rising edge */
+		ICU_setEdgeDetectionType(RAISING);
+		g_edgeCount = 0;
+	}
+}
+
+/*
+ * Description: Send trigger pulse to ultrasonic sensor
+ *              - Send 10us high pulse to trigger pin
+ */
+void Ultrasonic_Trigger(void)
+{
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, HIGH);
+	_delay_us(TRIGGER_DELAY);
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, LOW);
+}
+
+/*
+ * Description: Read the distance measured by ultrasonic sensor in centimeters
+ *              - Send trigger pulse
+ *              - Wait for measurement to complete
+ *              - Calculate distance based on echo high time
+ * Returns: Distance in centimeters
+ */
+uint16 Ultrasonic_readDistance(void)
+{
+	uint16 distance;
+
+	/* Send trigger pulse to start measurement */
+	Ultrasonic_Trigger();
+
+	/* Wait for measurement to complete */
+	_delay_ms(60); // Maximum wait time for measurement (60ms for 400cm range)
+
+	/* Calculate distance in centimeters */
+	/*
+	 * Timer runs at F_CPU/8 = 16MHz/8 = 2MHz -> 0.5us per tick
+	 * Distance = (High Time * Speed of Sound) / 2
+	 * Speed of Sound = 34000 cm/s
+	 *
+	 * Distance = (g_highTime * 0.5 * 10^-6 * 34000) / 2
+	 *          = (g_highTime * 17) / 1000
+	 *          ≈ g_highTime / 58.8
+	 *
+	 * Using the same calculation as original code: g_highTime / 117.6
+	 * This gives approximately half the distance, so we'll use the standard formula
+	 */
+	distance = (uint16)(g_highTime / 58.8);
+
+	/* Alternative calculation matching original code */
+	/* distance = (uint16)(g_highTime / 117.6); */
+
+	/* Reset high time for next measurement */
+	g_highTime = 0;
+
+	return distance;
+}
+
+/*
+ * Description: Initialize the ultrasonic sensor
+ *              - Initialize ICU driver
+ *              - Setup callback function
+ *              - Configure trigger pin as output
+ */
+void Ultrasonic_init(void)
+{
+	/* Initialize ICU with F_CPU/8 prescaler and rising edge detection */
+	ICU_init(&ICU_Config);
+
+	/* Set the callback function for edge processing */
+	ICU_setCallBack(Ultrasonic_edgeProcessing);
+
+	/* Setup trigger pin as output */
+	GPIO_setupPinDirection(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, pin_output);
+
+	/* Setup echo pin as input */
+	GPIO_setupPinDirection(Ultrasonic_Echo_PORT_ID, Ultrasonic_Echo_PIN_ID, pin_input);
+
+	/* Initialize global variables */
+	g_edgeCount = 0;
+	g_highTime = 0;
+
+	/* Ensure trigger pin starts LOW */
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, LOW);
+}

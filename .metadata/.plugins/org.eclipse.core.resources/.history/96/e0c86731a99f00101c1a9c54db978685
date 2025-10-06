@@ -1,0 +1,167 @@
+/******************************************************************************
+ *
+ * Module: Main Application
+ *
+ * File Name: main.c
+ *
+ * Description: Main application for Car Parking Sensor System
+ *
+ * Author: Your Name
+ *
+ *******************************************************************************/
+
+#include "MCAL/GPIO/GPIO.h"
+#include "HAL/LCD/LCD.h"
+#include "HAL/BUZZER/BUZZER.h"
+#include "HAL/LED/LED.h"
+#include "HAL/Ultrasonic/Ultrasonic.h"
+#include <util/delay.h>
+
+/*******************************************************************************
+ *                                Definitions                                  *
+ *******************************************************************************/
+
+/* Distance thresholds in centimeters */
+#define STOP_DISTANCE           5
+#define VERY_CLOSE_DISTANCE     10
+#define CLOSE_DISTANCE          15
+#define MEDIUM_DISTANCE         20
+
+/*******************************************************************************
+ *                      Functions Prototypes                                   *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance);
+void DisplayDistance(uint16 distance);
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance)
+{
+    /* First, turn off ALL LEDs and buzzer */
+    LED_off(RED_LED);
+    LED_off(GREEN_LED);
+    LED_off(BLUE_LED);
+    Buzzer_off();
+
+    /* Then, based on distance, turn ON what's needed */
+    if (distance <= STOP_DISTANCE && distance > 0)
+    {
+        /* Distance <= 5 cm: All LEDs ON and Buzzer ON (NO BLINKING) */
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_on(BLUE_LED);
+        Buzzer_on();
+    }
+    else if (distance <= VERY_CLOSE_DISTANCE)
+    {
+        /* 6-10 cm: All LEDs ON, No buzzer */
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_on(BLUE_LED);
+    }
+    else if (distance <= CLOSE_DISTANCE)
+    {
+        /* 11-15 cm: Red and Green LEDs ON, Blue OFF */
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_off(BLUE_LED);
+    }
+    else if (distance <= MEDIUM_DISTANCE)
+    {
+        /* 16-20 cm: Only Red LED ON */
+        LED_on(RED_LED);
+        LED_off(GREEN_LED);
+        LED_off(BLUE_LED);
+    }
+    /* For distance > 20, everything is already OFF */
+}
+
+void DisplayDistance(uint16 distance)
+{
+    /* Clear and update display */
+    LCD_moveCursur(0, 0);
+    LCD_displayString("Distance:    cm");
+
+    /* Update distance value */
+    LCD_moveCursur(0, 10);
+    if (distance < 100) {
+        LCD_displayString(" ");
+    }
+    if (distance < 10) {
+        LCD_displayString(" ");
+    }
+    LCD_itos(distance);
+
+    /* Display warning message */
+    LCD_moveCursur(1, 0);
+    if (distance <= STOP_DISTANCE && distance > 0)
+    {
+        LCD_displayString("     STOP!     ");
+    }
+    else if (distance == 0)
+    {
+        LCD_displayString("  NO SIGNAL    ");
+    }
+    else
+    {
+        LCD_displayString("               ");
+    }
+}
+
+int main(void)
+{
+    uint16 distance = 0;
+    uint16 lastStableDistance = 0;
+    uint8 stableCount = 0;
+
+    /* Initialize all drivers */
+    LCD_init();
+    Buzzer_init();
+    LEDS_init();
+    Ultrasonic_init();
+
+    /* Enable global interrupts */
+    SREG |= (1 << 7);
+
+    /* Display initial message */
+    LCD_clearScreen();
+    LCD_moveCursur(0, 0);
+    LCD_displayString("Distance:    cm");
+    LCD_moveCursur(1, 0);
+    LCD_displayString("  Parking Aid  ");
+    _delay_ms(2000);
+    LCD_moveCursur(1, 0);
+    LCD_displayString("               ");
+
+    /* Main application loop */
+    while(1)
+    {
+        /* Read distance from ultrasonic sensor */
+        distance = Ultrasonic_readDistance();
+
+        /* Simple filtering for stability */
+        if (distance == lastStableDistance) {
+            stableCount++;
+        } else {
+            stableCount = 0;
+            lastStableDistance = distance;
+        }
+
+        /* Only update if distance is stable for 2 consecutive readings */
+        if (stableCount >= 1) {
+            /* Control LEDs and buzzer based on distance */
+            ControlIndicators(distance);
+
+            /* Display distance on LCD */
+            DisplayDistance(distance);
+        }
+
+        /* Delay between measurements - ULTRASONIC NEEDS TIME! */
+        _delay_ms(200);  /* 200ms delay for stable operation */
+    }
+
+    return 0;
+}

@@ -1,0 +1,116 @@
+/******************************************************************************
+ *
+ * Module: Ultrasonic Sensor
+ *
+ * File Name: Ultrasonic.c
+ *
+ * Description: Source file for the HC-SR04 Ultrasonic Sensor driver
+ *
+ * Author: Your Name
+ *
+ *******************************************************************************/
+
+#include "Ultrasonic.h"
+#include "../../MCAL/ICU/ICU.h"
+#include "../../MCAL/GPIO/GPIO.h"
+#include <util/delay.h>
+
+/*******************************************************************************
+ *                           Global Variables                                  *
+ *******************************************************************************/
+
+ICU_ConfigType ICU_Config = {F_CPU_8, RAISING};
+
+static volatile uint8 g_edgeCount = 0;
+static volatile uint16 g_highTime = 0;
+static volatile uint8 g_measurementComplete = 0;
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+void Ultrasonic_edgeProcessing(void)
+{
+	g_edgeCount++;
+
+	if (g_edgeCount == 1)
+	{
+		/* First rising edge */
+		ICU_clearTimerValue();
+		ICU_setEdgeDetectionType(FALLING);
+	}
+	else if (g_edgeCount == 2)
+	{
+		/* Falling edge */
+		g_highTime = ICU_getInputCaptureValue();
+		ICU_setEdgeDetectionType(RAISING);
+		g_measurementComplete = 1;
+		g_edgeCount = 0;
+	}
+}
+
+void Ultrasonic_Trigger(void)
+{
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, HIGH);
+	_delay_us(15);  /* Increased to 15us for better reliability */
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, LOW);
+}
+
+uint16 Ultrasonic_readDistance(void)
+{
+	uint16 distance_cm = 0;
+	uint32 timeout = 0;
+
+	g_measurementComplete = 0;
+	g_highTime = 0;
+
+	Ultrasonic_Trigger();
+
+	/* Wait for measurement with timeout */
+	while(!g_measurementComplete && timeout < 50000)  /* 50ms timeout */
+	{
+		_delay_us(1);
+		timeout++;
+	}
+
+	if(g_measurementComplete && g_highTime > 58)  /* Minimum 1cm = 58 ticks */
+	{
+		/* More accurate calculation with floating point */
+		float32 distance_float = (float32)g_highTime / 58.8;
+		distance_cm = (uint16)distance_float;
+
+		/* Add calibration for minimum distance */
+		if(distance_cm < 3) {
+			distance_cm = 3;  /* HC-SR04 minimum practical distance */
+		}
+
+		if(distance_cm > 400) {
+			distance_cm = 400;
+		}
+	}
+	else
+	{
+		/* If no valid measurement, return 0 */
+		distance_cm = 0;
+	}
+
+	return distance_cm;
+}
+
+void Ultrasonic_init(void)
+{
+	ICU_init(&ICU_Config);
+	ICU_setCallBack(Ultrasonic_edgeProcessing);
+
+	GPIO_setupPinDirection(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, pin_output);
+	GPIO_setupPinDirection(Ultrasonic_Echo_PORT_ID, Ultrasonic_Echo_PIN_ID, pin_input);
+
+	g_edgeCount = 0;
+	g_highTime = 0;
+	g_measurementComplete = 0;
+
+	GPIO_writePin(Ultrasonic_Trigger_PORT_ID, Ultrasonic_Trigger_PIN_ID, LOW);
+
+	/* Initial delay for sensor stabilization */
+	_delay_ms(100);
+}

@@ -1,0 +1,113 @@
+/******************************************************************************
+ *
+ * Module: ICU
+ *
+ * File Name: ICU.h
+ *
+ * Description: Header file for the AVR ICU driver
+ *
+ * Author: Mahmoud Abouzeid
+ *
+ *******************************************************************************/
+#ifndef ICU_H_
+#define ICU_H_
+
+/*******************************************************************************
+ *                         Types Declaration                                   *
+ *******************************************************************************/
+#include "std_type.h"
+
+/*
+ * Enumeration for the clock source/prescaler options of Timer1.
+ * Used to select the clock that drives the ICU (Input Capture Unit).
+ */
+typedef enum
+{
+	NO_CLOCK,      /* Timer Stopped */
+	F_CPU_CLOCK,   /* No prescaling, use system clock */
+	F_CPU_8,       /* Prescaler = 8 */
+	F_CPU_64,      /* Prescaler = 64 */
+	F_CPU_256,     /* Prescaler = 256 */
+	F_CPU_1024     /* Prescaler = 1024 */
+}ICU_ClockType;
+
+/*
+ * Enumeration for edge detection type of ICU.
+ * FALLING: Capture on falling edge.
+ * RAISING: Capture on rising edge.
+ */
+typedef enum
+{
+	FALLING,
+	RAISING
+}ICU_EdgeType;
+
+/*
+ * Configuration structure to initialize ICU driver:
+ * - clock: selects the Timer1 clock source/prescaler.
+ * - edge : selects the initial edge detection type (falling/rising).
+ */
+typedef struct
+{
+	ICU_ClockType clock;
+	ICU_EdgeType edge;
+}ICU_ConfigType;
+
+
+ICU_ConfigType configurations = {F_CPU_8, RAISING};
+
+/*******************************************************************************
+ *                      Functions Prototypes                                   *
+ *******************************************************************************/
+
+/*
+ * Function Name: ICU_init
+ * Description:
+ *    - Initializes the ICU driver.
+ *    - Configures the selected clock and edge type.
+ *    - Enables the Input Capture Interrupt.
+ *    - Clears Timer1 and ICR1 registers.
+ */
+void ICU_init(const ICU_ConfigType * Config_Ptr);
+
+/*
+ * Function Name: ICU_setCallBack
+ * Description:
+ *    - Stores the address of the callback function.
+ *    - This function will be called inside the ISR when a capture event occurs.
+ */
+void ICU_setCallBack(void(*a_ptr)(void));
+
+/*
+ * Function Name: ICU_setEdgeDetectionType
+ * Description:
+ *    - Changes the edge detection type during runtime.
+ *    - Can switch between falling and rising edge detection.
+ */
+void ICU_setEdgeDetectionType(const ICU_EdgeType edgeType);
+
+/*
+ * Function Name: ICU_getInputCaptureValue
+ * Description:
+ *    - Returns the value stored in ICR1 register.
+ *    - This is the Timer1 counter value captured on the selected edge.
+ */
+uint16 ICU_getInputCaptureValue(void);
+
+/*
+ * Function Name: ICU_clearTimerValue
+ * Description:
+ *    - Clears the Timer1 counter (TCNT1) to start counting from zero again.
+ */
+void ICU_clearTimerValue(void);
+
+/*
+ * Function Name: ICU_deInit
+ * Description:
+ *    - Disables the ICU driver.
+ *    - Clears Timer1 and ICR1 registers.
+ *    - Disables the Input Capture Interrupt.
+ */
+void ICU_deInit(void);
+
+#endif /* ICU_H_ */

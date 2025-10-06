@@ -1,0 +1,161 @@
+/******************************************************************************
+ *
+ * Module: Main Application
+ *
+ * File Name: main.c
+ *
+ * Description: Main application for Car Parking Sensor System
+ *
+ * Author: Your Name
+ *
+ *******************************************************************************/
+
+#include "MCAL/GPIO/GPIO.h"
+#include "HAL/LCD/LCD.h"
+#include "HAL/BUZZER/BUZZER.h"
+#include "HAL/LED/LED.h"
+#include "HAL/Ultrasonic/Ultrasonic.h"
+#include <util/delay.h>
+#include <avr/io.h>
+
+/*******************************************************************************
+ *                                Definitions                                  *
+ *******************************************************************************/
+
+#define STOP_DISTANCE           5
+#define VERY_CLOSE_DISTANCE     10
+#define CLOSE_DISTANCE          15
+#define MEDIUM_DISTANCE         20
+
+/*******************************************************************************
+ *                      Functions Prototypes                                   *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance);
+void DisplayDistance(uint16 distance);
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance)
+{
+    /* ALWAYS turn off everything first - THIS STOPS FLICKERING */
+    LED_off(RED_LED);
+    LED_off(GREEN_LED);
+    LED_off(BLUE_LED);
+    Buzzer_off();
+
+    /* Then turn on based on distance */
+    if (distance <= STOP_DISTANCE && distance >= 3)  /* Minimum 3cm */
+    {
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_on(BLUE_LED);
+        Buzzer_on();
+    }
+    else if (distance <= VERY_CLOSE_DISTANCE)
+    {
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_on(BLUE_LED);
+    }
+    else if (distance <= CLOSE_DISTANCE)
+    {
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        /* Blue is already off */
+    }
+    else if (distance <= MEDIUM_DISTANCE)
+    {
+        LED_on(RED_LED);
+        /* Green and Blue are already off */
+    }
+    /* For distance > 20, everything is already off */
+}
+
+void DisplayDistance(uint16 distance)
+{
+    static uint16 lastDisplayedDistance = 0;
+
+    /* Only update display if distance changed significantly */
+    if (distance != lastDisplayedDistance)
+    {
+        LCD_moveCursur(0, 0);
+        LCD_displayString("Distance:    cm");
+
+        LCD_moveCursur(0, 10);
+        if (distance < 100) LCD_displayString(" ");
+        if (distance < 10) LCD_displayString(" ");
+        LCD_itos(distance);
+
+        LCD_moveCursur(1, 0);
+        if (distance <= STOP_DISTANCE && distance >= 3)
+        {
+            LCD_displayString("     STOP!     ");
+        }
+        else if (distance == 0)
+        {
+            LCD_displayString("  NO SIGNAL    ");
+        }
+        else
+        {
+            LCD_displayString("               ");
+        }
+
+        lastDisplayedDistance = distance;
+    }
+}
+
+int main(void)
+{
+    uint16 distance = 0;
+    uint16 filteredDistance = 0;
+    uint8 sampleCount = 0;
+    uint32 distanceSum = 0;
+
+    /* Initialize all drivers */
+    LCD_init();
+    Buzzer_init();
+    LEDS_init();
+    Ultrasonic_init();
+
+    /* Enable global interrupts */
+    SREG |= (1 << 7);
+
+    /* Display welcome message */
+    LCD_clearScreen();
+    LCD_moveCursur(0, 0);
+    LCD_displayString("Distance:    cm");
+    LCD_moveCursur(1, 0);
+    LCD_displayString("  Parking Aid  ");
+    _delay_ms(2000);
+    LCD_moveCursur(1, 0);
+    LCD_displayString("               ");
+
+    /* Main application loop */
+    while(1)
+    {
+        /* Read distance from sensor */
+        distance = Ultrasonic_readDistance();
+
+        /* Simple moving average filter for stability */
+        distanceSum += distance;
+        sampleCount++;
+
+        if (sampleCount >= 3) {  /* Average every 3 samples */
+            filteredDistance = distanceSum / 3;
+            distanceSum = 0;
+            sampleCount = 0;
+
+            /* Update indicators with filtered distance */
+            ControlIndicators(filteredDistance);
+            DisplayDistance(filteredDistance);
+        }
+
+        /* Stable delay - CRITICAL FOR NO FLICKERING */
+        _delay_ms(150);
+    }
+
+    return 0;
+}

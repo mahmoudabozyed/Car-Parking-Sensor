@@ -1,0 +1,189 @@
+/******************************************************************************
+ *
+ * Module: Main Application
+ *
+ * File Name: main.c
+ *
+ * Description: Main application for Car Parking Sensor System
+ *
+ * Author: Your Name
+ *
+ *******************************************************************************/
+
+#include "GPIO.h"
+#include "LCD.h"
+#include "BUZZER.h"
+#include "LED.h"
+#include "Ultrasonic.h"
+#include <util/delay.h>
+
+/*******************************************************************************
+ *                                Definitions                                  *
+ *******************************************************************************/
+
+/* Distance thresholds in centimeters */
+#define STOP_DISTANCE           5
+#define VERY_CLOSE_DISTANCE     10
+#define CLOSE_DISTANCE          15
+#define MEDIUM_DISTANCE         20
+
+/* Delay between measurements in milliseconds */
+#define MEASUREMENT_DELAY       250
+
+/*******************************************************************************
+ *                      Functions Prototypes                                   *
+ *******************************************************************************/
+
+/*
+ * Description: Control LEDs and Buzzer based on distance
+ * Input: distance - measured distance in cm
+ */
+void ControlIndicators(uint16 distance);
+
+/*
+ * Description: Display distance on LCD with appropriate message
+ * Input: distance - measured distance in cm
+ */
+void DisplayDistance(uint16 distance);
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance)
+{
+    /* Turn off all LEDs and buzzer first */
+    LED_off(RED_LED);
+    LED_off(GREEN_LED);
+    LED_off(BLUE_LED);
+    Buzzer_off();
+
+    if (distance <= STOP_DISTANCE)
+    {
+        /* Distance <= 5 cm: All LEDs flashing and buzzer ON */
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_on(BLUE_LED);
+        Buzzer_on();
+        _delay_ms(100);
+
+        LED_off(RED_LED);
+        LED_off(GREEN_LED);
+        LED_off(BLUE_LED);
+        _delay_ms(100);
+    }
+    else if (distance <= VERY_CLOSE_DISTANCE)
+    {
+        /* 6-10 cm: All LEDs ON, no buzzer */
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_on(BLUE_LED);
+    }
+    else if (distance <= CLOSE_DISTANCE)
+    {
+        /* 11-15 cm: Red and Green LEDs ON, Blue OFF */
+        LED_on(RED_LED);
+        LED_on(GREEN_LED);
+        LED_off(BLUE_LED);
+    }
+    else if (distance <= MEDIUM_DISTANCE)
+    {
+        /* 16-20 cm: Only Red LED ON */
+        LED_on(RED_LED);
+        LED_off(GREEN_LED);
+        LED_off(BLUE_LED);
+    }
+    else
+    {
+        /* >20 cm: All LEDs OFF, buzzer OFF */
+        LED_off(RED_LED);
+        LED_off(GREEN_LED);
+        LED_off(BLUE_LED);
+        Buzzer_off();
+    }
+}
+
+void DisplayDistance(uint16 distance)
+{
+    /* Clear the LCD display */
+    LCD_clearScreen();
+
+    /* Move cursor to first line */
+    LCD_moveCursur(0, 0);
+
+    if (distance <= STOP_DISTANCE)
+    {
+        /* Display STOP warning for very close distance */
+        LCD_displayString("STOP! ");
+        LCD_displayString("Dist: ");
+        LCD_itos(distance);
+        LCD_displayString("cm");
+    }
+    else
+    {
+        /* Display normal distance measurement */
+        LCD_displayString("Distance: ");
+        LCD_itos(distance);
+        LCD_displayString(" cm");
+    }
+
+    /* Display status on second line */
+    LCD_moveCursur(1, 0);
+    if (distance <= STOP_DISTANCE)
+    {
+        LCD_displayString("TOO CLOSE!");
+    }
+    else if (distance <= VERY_CLOSE_DISTANCE)
+    {
+        LCD_displayString("VERY CLOSE");
+    }
+    else if (distance <= CLOSE_DISTANCE)
+    {
+        LCD_displayString("CLOSE");
+    }
+    else if (distance <= MEDIUM_DISTANCE)
+    {
+        LCD_displayString("MEDIUM");
+    }
+    else
+    {
+        LCD_displayString("SAFE");
+    }
+}
+
+int main(void)
+{
+    uint16 distance = 0;
+
+    /* Initialize all drivers */
+    LCD_init();             /* Initialize LCD display */
+    Buzzer_init();          /* Initialize Buzzer */
+    LEDS_init();            /* Initialize all LEDs */
+    Ultrasonic_init();      /* Initialize Ultrasonic sensor */
+
+    /* Display welcome message */
+    LCD_clearScreen();
+    LCD_moveCursur(0, 0);
+    LCD_displayString("Car Parking");
+    LCD_moveCursur(1, 0);
+    LCD_displayString("Sensor System");
+    _delay_ms(2000);
+
+    /* Main application loop */
+    while(1)
+    {
+        /* Read distance from ultrasonic sensor */
+        distance = Ultrasonic_readDistance();
+
+        /* Control LEDs and buzzer based on distance */
+        ControlIndicators(distance);
+
+        /* Display distance on LCD */
+        DisplayDistance(distance);
+
+        /* Wait before next measurement */
+        _delay_ms(MEASUREMENT_DELAY);
+    }
+
+    return 0;
+}

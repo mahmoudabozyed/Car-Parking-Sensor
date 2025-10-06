@@ -1,0 +1,200 @@
+/******************************************************************************
+ *
+ * Module: Main Application
+ *
+ * File Name: main.c
+ *
+ * Description: Main application for Car Parking Sensor System
+ *
+ * Author: Your Name
+ *
+ *******************************************************************************/
+
+#include "MCAL/GPIO/GPIO.h"
+#include "HAL/LCD/LCD.h"
+#include "HAL/BUZZER/BUZZER.h"
+#include "HAL/LED/LED.h"
+#include "HAL/Ultrasonic/Ultrasonic.h"
+#include <util/delay.h>
+#include <avr/io.h>
+
+/*******************************************************************************
+ *                                Definitions                                  *
+ *******************************************************************************/
+
+#define STOP_DISTANCE           5
+#define VERY_CLOSE_DISTANCE     10
+#define CLOSE_DISTANCE          15
+#define MEDIUM_DISTANCE         20
+
+/*******************************************************************************
+ *                      Functions Prototypes                                   *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance);
+void UpdateDisplay(uint16 distance);
+
+/*******************************************************************************
+ *                      Functions Definitions                                  *
+ *******************************************************************************/
+
+void ControlIndicators(uint16 distance) {
+	/* Static variables to track previous state */
+	static uint16 prevDistance = 0;
+	static uint8 prevRedState = 0, prevGreenState = 0, prevBlueState = 0,
+			prevBuzzerState = 0;
+
+	uint8 currentRedState = 0, currentGreenState = 0, currentBlueState = 0,
+			currentBuzzerState = 0;
+
+	/* Determine what SHOULD be on based on distance */
+	if (distance <= STOP_DISTANCE && distance >= 2) {
+		currentRedState = 1;
+		currentGreenState = 1;
+		currentBlueState = 1;
+		currentBuzzerState = 1;
+	} else if (distance <= VERY_CLOSE_DISTANCE) {
+		currentRedState = 1;
+		currentGreenState = 1;
+		currentBlueState = 1;
+		currentBuzzerState = 0;
+	} else if (distance <= CLOSE_DISTANCE) {
+		currentRedState = 1;
+		currentGreenState = 1;
+		currentBlueState = 0;
+		currentBuzzerState = 0;
+	} else if (distance <= MEDIUM_DISTANCE) {
+		currentRedState = 1;
+		currentGreenState = 0;
+		currentBlueState = 0;
+		currentBuzzerState = 0;
+	} else {
+		currentRedState = 0;
+		currentGreenState = 0;
+		currentBlueState = 0;
+		currentBuzzerState = 0;
+	}
+
+	/* ONLY update if state changed - THIS ELIMINATES FLICKERING */
+	if (currentRedState != prevRedState) {
+		if (currentRedState)
+			LED_on(RED_LED);
+		else
+			LED_off(RED_LED);
+		prevRedState = currentRedState;
+	}
+
+	if (currentGreenState != prevGreenState) {
+		if (currentGreenState)
+			LED_on(GREEN_LED);
+		else
+			LED_off(GREEN_LED);
+		prevGreenState = currentGreenState;
+	}
+
+	if (currentBlueState != prevBlueState) {
+		if (currentBlueState)
+			LED_on(BLUE_LED);
+		else
+			LED_off(BLUE_LED);
+		prevBlueState = currentBlueState;
+	}
+
+	if (currentBuzzerState != prevBuzzerState) {
+		if (currentBuzzerState)
+			Buzzer_on();
+		else
+			Buzzer_off();
+		prevBuzzerState = currentBuzzerState;
+	}
+
+	prevDistance = distance;
+}
+
+void UpdateDisplay(uint16 distance) {
+	static uint16 lastDisplayedDistance = 0xFFFF; /* Initialize with invalid value */
+
+	/* Only update if distance changed */
+	if (distance != lastDisplayedDistance) {
+		/* Update distance value */
+		LCD_moveCursur(0, 10);
+		if (distance == 0) {
+			LCD_displayString("   ");
+		} else {
+			if (distance < 100)
+				LCD_displayString(" ");
+			if (distance < 10)
+				LCD_displayString(" ");
+			LCD_itos(distance);
+		}
+
+		/* Update warning message */
+		LCD_moveCursur(1, 0);
+		if (distance <= STOP_DISTANCE && distance >= 2) {
+			LCD_displayString("     STOP!     ");
+		} else if (distance == 0) {
+			LCD_displayString("  NO SIGNAL    ");
+		} else {
+			LCD_displayString("               ");
+		}
+
+		lastDisplayedDistance = distance;
+	}
+}
+
+int main(void) {
+	uint16 distance = 0;
+	uint16 filteredDistance = 0;
+	uint16 distanceBuffer[3] = { 0, 0, 0 };
+	uint8 bufferIndex = 0;
+	uint32 measurementCount = 0;
+
+	/* Initialize all drivers */
+	LCD_init();
+	Buzzer_init();
+	LEDS_init();
+	Ultrasonic_init();
+
+	/* Enable global interrupts */
+	SREG |= (1 << 7);
+
+	/* Display initial screen */
+	LCD_clearScreen();
+	LCD_moveCursur(0, 0);
+	LCD_displayString("Distance:    cm");
+	LCD_moveCursur(1, 0);
+	LCD_displayString("               ");
+
+	/* Turn off all indicators initially */
+	LED_off(RED_LED);
+	LED_off(GREEN_LED);
+	LED_off(BLUE_LED);
+	Buzzer_off();
+
+	/* Main application loop */
+	while (1) {
+		/* Read raw distance */
+		distance = Ultrasonic_readDistance();
+
+		/* Simple moving average filter */
+		distanceBuffer[bufferIndex] = distance;
+		bufferIndex = (bufferIndex + 1) % 3;
+
+		/* Calculate average */
+		filteredDistance = (distanceBuffer[0] + distanceBuffer[1]
+				+ distanceBuffer[2]) / 3;
+
+		/* Only process every 3rd measurement for stability */
+		measurementCount++;
+		if (measurementCount % 3 == 0) {
+			/* Update indicators and display */
+			ControlIndicators(filteredDistance);
+			UpdateDisplay(filteredDistance);
+		}
+
+		/* Fixed delay for stable operation */
+		_delay_ms(100);
+	}
+
+	return 0;
+}
